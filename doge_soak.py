@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 
 from obrbot import hook
 
@@ -13,11 +14,22 @@ logger = logging.getLogger('obrbot')
 
 @asyncio.coroutine
 def get_raw_balance(event):
+    """
+    :type event: obrbot.event.Event
+    """
     result = yield from event.async(event.db.get, 'plugins:doge-wallet:balance')
     if result is None:
         return 0
     else:
         return float(result)
+
+
+@asyncio.coroutine
+def thanked_timer(event, nick):
+    """
+    :type event: obrbot.event.Event
+    """
+    result = yield from event.async(event.db.get)
 
 
 @asyncio.coroutine
@@ -77,8 +89,13 @@ def soaked_first(match, event):
     if event.nick != doge_nick:
         return
 
-    second = yield from event.wait_for_message("(.*)", nick=event.nick, chan=event.chan)
-    if event.conn.nick not in second.group(1).lower().split():
+    second = yield from event.wait_for_message("(.*)", nick=event.nick, chan=event.chan_name)
+    if event.conn.bot_nick not in second.group(1).lower().split():
+        if random.random() > 0.0625:
+            # Random 1 in 16 chance to thank someone who didn't soak us
+            # They deserve gratitude as well.
+            # But we don't want to be annoying and thank *everyone* who didn't soak us.
+            event.message("ty")
         return  # This checks if we were being soaked.
 
     doge_amount_added = int(match.group(2))
