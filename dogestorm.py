@@ -4,20 +4,24 @@ import random
 
 from obrbot import hook
 
-pending_soaks = []
-
 doge_nick = 'DogeWallet'
-max_doge = 500
+doge_required = 1000
+
+# Don't thank the same person more than every this number of seconds
+thank_every_seconds = 20
 
 logger = logging.getLogger('obrbot')
 
+balance_key = 'obrbot:plugins:doge-storm:balance'
+thanked_timer_key = 'obrbot:plugins:doge-storm:thanked:{}'
+
 
 @asyncio.coroutine
-def get_raw_balance(event):
+def raw_get_balance(event):
     """
     :type event: obrbot.event.Event
     """
-    result = yield from event.async(event.db.get, 'plugins:doge-wallet:balance')
+    result = yield from event.async(event.db.get, balance_key)
     if result is None:
         return 0
     else:
@@ -25,11 +29,22 @@ def get_raw_balance(event):
 
 
 @asyncio.coroutine
-def thanked_timer(event, nick):
+def raw_add_balance(event, balance):
+    raw_result = yield from event.async(event.db.incrbyfloat, balance_key, balance)
+    return float(raw_result)
+
+
+@asyncio.coroutine
+def already_thanked(event, nick):
     """
     :type event: obrbot.event.Event
     """
-    result = yield from event.async(event.db.get)
+    key = thanked_timer_key.format(nick.lower())
+    result = yield from event.async(event.db.get, key)
+    if result is not None:
+        return True
+    yield from event.async(event.db.set(key, '', ex=thank_every_seconds))
+    return False
 
 
 @asyncio.coroutine
@@ -51,7 +66,7 @@ def update_balance(event):
     """
     :type event: obrbot.event.Event
     """
-    stored_balance = yield from get_raw_balance(event)
+    stored_balance = yield from raw_get_balance(event)
 
     event.message("balance", target="DogeWallet")
     balance = float((yield from event.wait_for_message("([0-9]*\.?[0-9]*)", nick="DogeWallet")).group(1))
@@ -67,8 +82,8 @@ def add_doge(event, amount_added):
     """
     :type event: obrbot.event.Event
     """
-    balance = float((yield from event.async(event.db.incrbyfloat, 'plugins:doge-wallet:balance', amount_added)))
-    if balance > max_doge:
+    balance = yield from raw_add_balance(event, amount_added)
+    if balance > doge_required:
         active = yield from get_active(event)
         if active < 1:
             return
@@ -90,16 +105,24 @@ def soaked_first(match, event):
         return
 
     second = yield from event.wait_for_message("(.*)", nick=event.nick, chan=event.chan_name)
-    if event.conn.bot_nick not in second.group(1).lower().split():
+
+    doge_amount_given = int(match.group(2))
+
+    if event.conn.bot_nick in second.group(1).lower().split():
+        # We were soaked
+        asyncio.async(add_doge(event, doge_amount_given), loop=event.loop)
+        # If the user gave us more than 5 or more doge, thank them half of the time.
+        if doge_amount_given >= 5 and random.random() > 0.5:
+            if not already_thanked(event, event.nick):
+                event.message("ty")
+    else:
         if random.random() > 0.0625:
             # Random 1 in 16 chance to thank someone who didn't soak us
             # They deserve gratitude as well.
             # But we don't want to be annoying and thank *everyone* who didn't soak us.
-            event.message("ty")
+            if not already_thanked(event, event.nick):
+                event.message("ty")
         return  # This checks if we were being soaked.
-
-    doge_amount_added = int(match.group(2))
-    yield from add_doge(event, doge_amount_added)
 
 
 @asyncio.coroutine
@@ -109,12 +132,13 @@ def tipped(match, event):
     if match.group(2).lower() != event.conn.nick.lower():
         return  # if we weren't tipped
     amount = float(match.group(3))
-    current = yield from get_raw_balance(event)
+    current = yield from raw_get_balance(event)
     current += amount
-    if current > max_doge:
-        event.message("Thank you {}, you've tipped the balance! {} will be soaked soon.".format(sender, max_doge))
+    if current > doge_required:
+        event.message("Thank you {}, you've tipped the balance! {} will be soaked after communications with DogeWallet."
+                      .format(sender, doge_required))
     else:
-        event.message("Thanks for the tip, {}! {} more doge to go!".format(sender, max_doge - current))
+        event.message("Thanks for the tip, {}! {} more doge to go!".format(sender, doge_required - current))
     yield from add_doge(event, amount)
 
 
@@ -124,5 +148,5 @@ def doge_balance(event):
     """
     :type event: obrbot.event.Event
     """
-    balance = yield from get_raw_balance(event)
+    balance = yield from raw_get_balance(event)
     return "Balance: {}".format(balance)
