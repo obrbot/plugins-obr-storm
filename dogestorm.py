@@ -53,7 +53,8 @@ def get_active(event):
     :type event: obrbot.event.Event
     """
     event.message("active", target="DogeWallet")
-    active = (yield from event.wait_for_message("Active Shibes: ([0-9]*)", nick="DogeWallet")).group(1)
+    active = (yield from event.wait_for_message("Active Shibes: ([0-9]*)", nick="DogeWallet",
+                                                chan="DogeWallet")).group(1)
 
     print("Active: " + active)
     return int(active)
@@ -69,7 +70,8 @@ def update_balance(event):
     stored_balance = yield from raw_get_balance(event)
 
     event.message("balance", target="DogeWallet")
-    balance = float((yield from event.wait_for_message("([0-9]*\.?[0-9]*)", nick="DogeWallet")).group(1))
+    balance = float((yield from event.wait_for_message("([0-9]*\.?[0-9]*)", nick="DogeWallet",
+                                                       chan="DogeWallet")).group(1))
 
     if stored_balance != balance:
         yield from event.async(event.db.set, 'plugins:doge-wallet:balance', balance)
@@ -96,7 +98,7 @@ def add_doge(event, amount_added):
 
 @asyncio.coroutine
 @hook.regex("([^ ]*) is soaking [0-9]* shibes with ([0-9\.]*) Doge each. Total: [0-9\.]*")
-def soaked_first(match, event):
+def soaked_regex(match, event):
     """
     :type match: re.__Match[str]
     :type event: obrbot.event.Event
@@ -129,7 +131,7 @@ def soaked_first(match, event):
 @hook.regex("\[Wow\!\] ([^ ]*) sent ([^ ]*) ([0-9*]\.?[0-9]*) Doge")
 def tipped(match, event):
     sender = match.group(1)
-    if match.group(2).lower() != event.conn.nick.lower():
+    if match.group(2).lower() != event.conn.bot_nick.lower():
         return  # if we weren't tipped
     amount = float(match.group(3))
     current = yield from raw_get_balance(event)
