@@ -1,4 +1,5 @@
 import asyncio
+from decimal import Decimal
 import logging
 import random
 
@@ -10,7 +11,7 @@ doge_required_soak = 10
 
 # This percentage of all donated DogeCoin will be 'reserved' and not used in 1000-coin soaks.
 # This is saving up for future DogeCoin 'soak storms' which aren't currently implemented.
-reserve_percentage = 10
+reserve_percentage = Decimal(10)
 
 # Don't thank the same person more than every this number of seconds
 thank_every_seconds = 30
@@ -27,18 +28,22 @@ def raw_get_reserves(event):
     """
     :type event: obrbot.event.Event
     """
-    result = yield from event.async(event.db.get, reserves_key)
-    if result is None:
+    raw_result = yield from event.async(event.db.get, reserves_key)
+    if raw_result is None:
         return 0
     else:
-        return float(result)
+        # See below, in raw_add_reserves
+        return Decimal(raw_result.decode()) / 1000
 
 
 @asyncio.coroutine
 def raw_add_reserves(event, balance):
     logger.info("Adding {} to reserves".format(balance))
-    raw_result = yield from event.async(event.db.incrbyfloat, reserves_key, balance)
-    return float(raw_result)
+    # We're multiplying by 1000 and dividing by 1000 in order to store the reserves in Redis as an integer, but with
+    # some decimal accuracy. Since we can't use the 'Decimal' class in Redis, we're just storing it as 1000* it's actual
+    # value, so that some decimal places are preserved.
+    raw_result = yield from event.async(event.db.incrby, reserves_key, int(balance * 1000))
+    return Decimal(raw_result) / 1000
 
 
 @asyncio.coroutine
@@ -46,24 +51,24 @@ def raw_get_balance(event):
     """
     :type event: obrbot.event.Event
     """
-    result = yield from event.async(event.db.get, balance_key)
-    if result is None:
+    raw_result = yield from event.async(event.db.get, balance_key)
+    if raw_result is None:
         return 0
     else:
-        return float(result)
+        return Decimal(raw_result.decode())
 
 
 @asyncio.coroutine
 def raw_add_balance(event, balance):
     logger.info("Adding {} to balance".format(balance))
     raw_result = yield from event.async(event.db.incrbyfloat, balance_key, balance)
-    return float(raw_result)
+    return Decimal(raw_result)
 
 
 @asyncio.coroutine
 def raw_set_balance(event, balance):
     raw_result = yield from event.async(event.db.set, balance_key, balance)
-    return float(raw_result)
+    return Decimal(raw_result.decode())
 
 
 @asyncio.coroutine
@@ -100,7 +105,7 @@ def update_balance(event):
     stored_balance = yield from raw_get_balance(event)
 
     event.message("balance", target=doge_nick)
-    balance = float((yield from event.conn.wait_for("^([0-9]*\.?[0-9]*)$", nick=doge_nick, chan=doge_nick)).group(1))
+    balance = Decimal((yield from event.conn.wait_for("^([0-9]*\.?[0-9]*)$", nick=doge_nick, chan=doge_nick)).group(1))
 
     if stored_balance != balance:
         logger.info("Updated balance from {} to {}".format(stored_balance, balance))
@@ -142,7 +147,7 @@ def add_doge(event, amount_added):
 
         if soaked_future in done:
             match = yield from soaked_future
-            yield from raw_add_balance(event, -float(match.group(1)))
+            yield from raw_add_balance(event, -Decimal(match.group(1)))
         for future in pending:
             future.cancel()  # we don't care anymore
 
@@ -191,7 +196,7 @@ def tipped(match, event):
     sender = match.group(1)
     if match.group(2).lower() != event.conn.bot_nick.lower():
         return  # if we weren't tipped
-    amount = float(match.group(3))
+    amount = Decimal(match.group(3))
     current = yield from raw_get_balance(event)
     current -= yield from raw_get_reserves(event)
     current += amount * (100 - reserve_percentage) / 100  # don't count new reserves
@@ -226,10 +231,21 @@ def update_balance_command(event):
 
 
 @asyncio.coroutine
-@hook.command("reserves", autohelp=False, permissions=["bot.manage"])
-def doge_reserves(event):
+@hook.command("reserves", autohelp=False)
+def reserves_command(event):
     """
     :type event: obrbot.event.Event
     """
     balance = yield from raw_get_reserves(event)
     return "Reserves: {}".format(balance)
+
+
+@asyncio.coroutine
+@hook.command("raw-balance", autohelp=False)
+def raw_reserves_command(event):
+    """
+    :type event: obrbot.event.Event
+    """
+    balance = yield from raw_get_balance(event)
+    reserves = yield from raw_get_reserves(event)
+    return "Total: {}, Reserves: {}, Balance: {}".format(balance, reserves, balance - reserves)
