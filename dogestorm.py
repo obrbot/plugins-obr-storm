@@ -20,6 +20,7 @@ logger = logging.getLogger('obrbot')
 
 balance_key = 'obrbot:plugins:doge-storm:balance'
 reserves_key = 'obrbot:plugins:doge-storm:reserved'
+soaked_key = 'obrbot:plugins:doge-storm:soaked'
 thanked_timer_key = 'obrbot:plugins:doge-storm:thanked:{}'
 
 
@@ -38,6 +39,9 @@ def raw_get_reserves(event):
 
 @asyncio.coroutine
 def raw_add_reserves(event, balance):
+    """
+    :type event: obrbot.event.Event
+    """
     logger.info("Adding {} to reserves".format(balance))
     # We're multiplying by 1000 and dividing by 1000 in order to store the reserves in Redis as an integer, but with
     # some decimal accuracy. Since we can't use the 'Decimal' class in Redis, we're just storing it as 1000* it's actual
@@ -60,6 +64,9 @@ def raw_get_balance(event):
 
 @asyncio.coroutine
 def raw_add_balance(event, balance):
+    """
+    :type event: obrbot.event.Event
+    """
     logger.info("Adding {} to balance".format(balance))
     raw_result = yield from event.async(event.db.incrbyfloat, balance_key, balance)
     return Decimal(raw_result)
@@ -67,8 +74,29 @@ def raw_add_balance(event, balance):
 
 @asyncio.coroutine
 def raw_set_balance(event, balance):
+    """
+    :type event: obrbot.event.Event
+    """
     raw_result = yield from event.async(event.db.set, balance_key, balance)
     return Decimal(raw_result.decode())
+
+
+@asyncio.coroutine
+def raw_get_soaked(event):
+    """
+    :type event: obrbot.event.Event
+    """
+    raw_result = yield from event.async(event.db.get, soaked_key)
+    return Decimal(raw_result)
+
+
+@asyncio.coroutine
+def raw_add_soaked(event, balance):
+    """
+    :type event: obrbot.event.Event
+    """
+    raw_result = yield from event.async(event.db.incrbyfloat, soaked_key, balance)
+    return Decimal(raw_result)
 
 
 @asyncio.coroutine
@@ -147,7 +175,9 @@ def add_doge(event, amount_added):
 
         if soaked_future in done:
             match = yield from soaked_future
-            yield from raw_add_balance(event, -Decimal(match.group(1)))
+            soaked_amount = Decimal(match.group(1))
+            yield from raw_add_balance(event, -soaked_amount)
+            yield from raw_add_soaked(event, soaked_amount)
         for future in pending:
             future.cancel()  # we don't care anymore
 
@@ -238,6 +268,16 @@ def reserves_command(event):
     """
     balance = yield from raw_get_reserves(event)
     return "Reserves: {}".format(balance)
+
+
+@asyncio.coroutine
+@hook.command("soaked", autohelp=False)
+def soaked_command(event):
+    """
+    :type event: obrbot.event.Event
+    """
+    balance = yield from raw_get_soaked(event)
+    return "Total Soaked: {}".format(balance)
 
 
 @asyncio.coroutine
