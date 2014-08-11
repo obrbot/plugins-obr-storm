@@ -114,7 +114,6 @@ def already_thanked(event, nick):
     return False
 
 
-@asyncio.coroutine
 def get_amount_till_next_soak(balance):
     # Slightly-accurate of amount needing to be gathered, taking into account reserved amount
     reserved_multiplier = (1 + reserve_percentage / 100 + reserve_percentage / 1000
