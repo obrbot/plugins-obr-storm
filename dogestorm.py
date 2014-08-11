@@ -115,6 +115,14 @@ def already_thanked(event, nick):
 
 
 @asyncio.coroutine
+def get_amount_till_next_soak(balance):
+    # Slightly-accurate of amount needing to be gathered, taking into account reserved amount
+    reserved_multiplier = (1 + reserve_percentage / 100 + reserve_percentage / 1000
+                           + reserve_percentage / 10000 + reserve_percentage / 100000)
+    return math.ceil((doge_required_soak - balance) * reserved_multiplier)
+
+
+@asyncio.coroutine
 def get_active(event):
     """
     :type event: obrbot.event.Event
@@ -158,7 +166,7 @@ def add_doge(event, amount_added):
             event.message("Would have soaked {}, but there are less than 3 active users.")
             event.message("When more users are active, tip 1 doge and the soak will be re-initiated")
             return
-        event.message("Soaking {}!".format(balance))
+        event.message("[Soak] Soaking {}!".format(balance))
 
         balance = yield from update_balance(event)
         balance -= reserves  # Since we had to update_balance again, re-apply reserves
@@ -177,8 +185,16 @@ def add_doge(event, amount_added):
         if soaked_future in done:
             match = yield from soaked_future
             soaked_amount = Decimal(match.group(1))
-            yield from raw_add_balance(event, -soaked_amount)
+            new_balance = yield from raw_add_balance(event, -soaked_amount)
             yield from raw_add_soaked(event, soaked_amount)
+            # Sleep before announcing next soak
+            yield from asyncio.sleep(1 + random.random(), loop=event.loop)
+            event.message("[Soak] Saving up for {}Ð soak! {} more doge required!".format(
+                doge_required_soak, get_amount_till_next_soak(new_balance)))
+        elif failed_future in done:
+            event.message("[Soak] Soak failed! Not enough doge, even after double-checking!", "Ping Dabo!")
+        else:
+            event.message("[Soak] Soak failed! DogeWallet failed to respond!", "Ping Dabo!")
         for future in pending:
             future.cancel()  # we don't care anymore
 
@@ -232,14 +248,12 @@ def tipped(match, event):
     current -= yield from raw_get_reserves(event)
     current += amount * (100 - reserve_percentage) / 100  # don't count new reserves
     if current > doge_required_soak:
-        event.message("Thank you {}, you've tipped the balance! {} will be soaked after communications with DogeWallet."
+        event.message("[Soak] Thank you {}, you've tipped the balance! Soak incoming!"
                       .format(sender, current))
     else:
-        # Slightly-accurate of amount needing to be gathered, taking into account reserved amount
-        reserved_multiplier = (1 + reserve_percentage / 100 + reserve_percentage / 1000
-                               + reserve_percentage / 10000 + reserve_percentage / 100000)
-        event.message("Thanks for the tip, {}! {} more doge to go!"
-                      .format(sender, math.ceil((doge_required_soak - current) * reserved_multiplier)))
+        event.message("Thanks for the tip, {}! {} more doge till a {}Ð soak!".format(
+            sender, get_amount_till_next_soak(current), doge_required_soak))
+
     yield from add_doge(event, amount)
 
 
