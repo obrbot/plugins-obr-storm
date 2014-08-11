@@ -6,7 +6,7 @@ from obrbot import hook
 
 doge_nick = 'DogeWallet'
 doge_channel = '#doge-coin'
-doge_required_soak = 1000
+doge_required_soak = 10
 
 # This percentage of all donated DogeCoin will be 'reserved' and not used in 1000-coin soaks.
 # This is saving up for future DogeCoin 'soak storms' which aren't currently implemented.
