@@ -2,6 +2,7 @@ import asyncio
 from decimal import Decimal
 import logging
 import random
+import math
 
 from obrbot import hook
 
@@ -87,7 +88,7 @@ def raw_get_soaked(event):
     :type event: obrbot.event.Event
     """
     raw_result = yield from event.async(event.db.get, soaked_key)
-    return Decimal(raw_result)
+    return Decimal(raw_result.decode())
 
 
 @asyncio.coroutine
@@ -234,7 +235,11 @@ def tipped(match, event):
         event.message("Thank you {}, you've tipped the balance! {} will be soaked after communications with DogeWallet."
                       .format(sender, current))
     else:
-        event.message("Thanks for the tip, {}! {} more doge to go!".format(sender, doge_required_soak - current))
+        # Slightly-accurate of amount needing to be gathered, taking into account reserved amount
+        reserved_multiplier = (1 + reserve_percentage / 100 + reserve_percentage / 1000
+                               + reserve_percentage / 10000 + reserve_percentage / 100000)
+        event.message("Thanks for the tip, {}! {} more doge to go!"
+                      .format(sender, math.ceil((doge_required_soak - current) * reserved_multiplier)))
     yield from add_doge(event, amount)
 
 
