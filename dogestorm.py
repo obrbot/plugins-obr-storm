@@ -118,6 +118,7 @@ def add_doge(event, amount_added):
     """
     balance = yield from raw_add_balance(event, amount_added)
     # We don't want to count reserves for our smaller soaks
+    reserves = yield from raw_add_reserves(event, amount_added * reserve_percentage / 100)
     balance -= yield from raw_add_reserves(event, amount_added * reserve_percentage / 100)
     if balance > doge_required_soak:
         active = yield from get_active(event)
@@ -125,10 +126,10 @@ def add_doge(event, amount_added):
             event.message("Would have soaked {}, but there are less than 3 active users.")
             event.message("When more users are active, tip 1 doge and the soak will be re-initiated")
             return
-
         event.message("Soaking {}!".format(balance))
 
         balance = yield from update_balance(event)
+        balance -= reserves  # Since we had to update_balance again, re-apply reserves
 
         event.message(".soak {}".format(int(balance / active)))
 
