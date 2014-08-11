@@ -5,6 +5,7 @@ import random
 from obrbot import hook
 
 doge_nick = 'DogeWallet'
+doge_channel = '#doge-coin'
 doge_required_soak = 1000
 
 # This percentage of all donated DogeCoin will be 'reserved' and not used in 1000-coin soaks.
@@ -33,7 +34,9 @@ def raw_get_reserves(event):
         return float(result)
 
 
+@asyncio.coroutine
 def raw_add_reserves(event, balance):
+    logger.info("Adding {} to reserves")
     raw_result = yield from event.async(event.db.incrbyfloat, reserves_key, balance)
     return float(raw_result)
 
@@ -52,6 +55,7 @@ def raw_get_balance(event):
 
 @asyncio.coroutine
 def raw_add_balance(event, balance):
+    logger.info("Adding {} to balance".format(balance))
     raw_result = yield from event.async(event.db.incrbyfloat, balance_key, balance)
     return float(raw_result)
 
@@ -82,7 +86,7 @@ def get_active(event):
     :type event: obrbot.event.Event
     """
     event.message("active", target=doge_nick)
-    active = (yield from event.wait_for_message("^Active Shibes: ([0-9]*)$", nick=doge_nick, chan=doge_nick)).group(1)
+    active = (yield from event.conn.wait_for("^Active Shibes: ([0-9]*)$", nick=doge_nick, chan=doge_nick)).group(1)
 
     print("Active: " + active)
     return int(active)
@@ -98,9 +102,10 @@ def update_balance(event):
     stored_balance = yield from raw_get_balance(event)
 
     event.message("balance", target=doge_nick)
-    balance = float((yield from event.wait_for_message("^([0-9]*\.?[0-9]*)$", nick=doge_nick, chan=doge_nick)).group(1))
+    balance = float((yield from event.conn.wait_for("^([0-9]*\.?[0-9]*)$", nick=doge_nick, chan=doge_nick)).group(1))
 
     if stored_balance != balance:
+        logger.info("Updated balance from {} to {}".format(stored_balance, balance))
         yield from raw_set_balance(event, balance)
 
     return balance
@@ -126,11 +131,25 @@ def add_doge(event, amount_added):
         balance = yield from update_balance(event)
 
         event.message(".soak {}".format(int(balance / active)))
-        yield from update_balance(event)
+
+        soaked_future = event.conn.wait_for(
+            "{} is soaking [0-9]* shibes with ([0-9\.]*) Doge each. Total: [0-9\.]*"
+            .format(event.conn.bot_nick), nick=doge_nick)
+
+        failed_future = event.conn.wait_for("Not enough doge.", nick=doge_nick, chan=doge_nick)
+
+        done, pending = yield from asyncio.wait([soaked_future, failed_future], loop=event.loop,
+                                                return_when=asyncio.FIRST_COMPLETED, timeout=20)
+
+        if soaked_future in done:
+            match = yield from soaked_future
+            yield from raw_add_balance(event, -match.group(1))
+        for future in pending:
+            future.cancel()  # we don't care anymore
 
 
 @asyncio.coroutine
-@hook.regex("([^ ]*) is soaking [0-9]* shibes with ([0-9\.]*) Doge each. Total: [0-9\.]*")
+@hook.regex("([^ ]*) is soaking [0-9]* shibes with ([0-9\.]*) Doge each. Total: [0-9\.]*", single_thread=True)
 def soaked_regex(match, event):
     """
     :type match: re.__Match[str]
@@ -141,21 +160,24 @@ def soaked_regex(match, event):
     if event.nick != doge_nick:
         return
 
-    second = yield from event.wait_for_message("(.*)", nick=event.nick, chan=event.chan_name)
+    if giving_nick.lower() == event.conn.bot_nick.lower():
+        return
+
+    second = yield from event.conn.wait_for("(.*)", nick=event.nick, chan=event.chan_name)
 
     doge_amount_given = int(match.group(2))
 
     if event.conn.bot_nick.lower() in second.group(1).lower().split():
-        # We were soaked
-        asyncio.async(add_doge(event, doge_amount_given), loop=event.loop)
         # If the user gave us more than 5 or more doge, thank them half of the time.
         if doge_amount_given >= 5 and random.random() > 0.5:
             if not (yield from already_thanked(event, giving_nick)):
                 yield from asyncio.sleep(0.25 + random.random(), loop=event.loop)
                 event.message("ty")
+        # We were soaked
+        asyncio.async(add_doge(event, doge_amount_given), loop=event.loop)
     else:
-        if random.random() > 0.125:
-            # Random 1 in 8 chance to thank someone who didn't soak us
+        if random.random() > 0.0625:
+            # Random 1 in 16 chance to thank someone who didn't soak us
             # They deserve gratitude as well.
             # But we don't want to be annoying and thank *everyone* who didn't soak us.
             if not (yield from already_thanked(event, giving_nick)):
