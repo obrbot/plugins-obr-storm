@@ -116,8 +116,8 @@ def already_thanked(event, nick):
 
 def get_amount_till_next_soak(balance):
     # Slightly-accurate of amount needing to be gathered, taking into account reserved amount
-    reserved_multiplier = (1 + reserve_percentage / 100 + reserve_percentage / 1000
-                           + reserve_percentage / 10000 + reserve_percentage / 100000)
+    # 0.0111111etc works because reserve_percentage is a percentage of doge donated which *won't* be used.
+    reserved_multiplier = 1 + reserve_percentage * 0.01111111
     return math.ceil((doge_required_soak - balance) * reserved_multiplier)
 
 
