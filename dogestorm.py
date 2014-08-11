@@ -92,9 +92,7 @@ def get_active(event):
     return int(active)
 
 
-# this can be used as a command, or just as a function
 @asyncio.coroutine
-@hook.command("update-balance", autohelp=False)
 def update_balance(event):
     """
     :type event: obrbot.event.Event
@@ -212,6 +210,17 @@ def doge_balance(event):
     :type event: obrbot.event.Event
     """
     balance = yield from raw_get_balance(event)
+    reserves = yield from raw_get_reserves(event)
+    return "Balance: {}".format(balance - reserves)
+
+
+@asyncio.coroutine
+@hook.command("update-balance", autohelp=False)
+def doge_balance(event):
+    """
+    :type event: obrbot.event.Event
+    """
+    balance = yield from update_balance(event)
     reserves = yield from raw_get_reserves(event)
     return "Balance: {}".format(balance - reserves)
 
