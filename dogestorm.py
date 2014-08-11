@@ -212,7 +212,7 @@ def doge_balance(event):
     :type event: obrbot.event.Event
     """
     balance = yield from raw_get_balance(event)
-    reserves = yield from raw_add_reserves(event)
+    reserves = yield from raw_get_reserves(event)
     return "Balance: {}".format(balance - reserves)
 
 
