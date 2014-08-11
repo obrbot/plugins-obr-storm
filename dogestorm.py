@@ -36,7 +36,7 @@ def raw_get_reserves(event):
 
 @asyncio.coroutine
 def raw_add_reserves(event, balance):
-    logger.info("Adding {} to reserves")
+    logger.info("Adding {} to reserves".format(balance))
     raw_result = yield from event.async(event.db.incrbyfloat, reserves_key, balance)
     return float(raw_result)
 
