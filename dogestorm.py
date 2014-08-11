@@ -205,7 +205,7 @@ def tipped(match, event):
 
 @asyncio.coroutine
 @hook.command("balance", autohelp=False)
-def doge_balance(event):
+def balance_command(event):
     """
     :type event: obrbot.event.Event
     """
@@ -216,7 +216,7 @@ def doge_balance(event):
 
 @asyncio.coroutine
 @hook.command("update-balance", autohelp=False)
-def doge_balance(event):
+def update_balance_command(event):
     """
     :type event: obrbot.event.Event
     """
