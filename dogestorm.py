@@ -204,14 +204,14 @@ def soaked_regex(match, event):
 
     if event.conn.bot_nick.lower() in second.group(1).lower().split():
         # If the user gave us more than 5 or more doge, thank them half of the time.
-        if doge_amount_given >= 3 and random.random() > 0.4:
+        if doge_amount_given >= 3 and random.random() <= 0.6:
             if not (yield from already_thanked(event, giving_nick)):
                 yield from asyncio.sleep(0.5 + random.random(), loop=event.loop)
                 event.message("ty")
         # We were soaked
         asyncio.async(add_doge(event, doge_amount_given), loop=event.loop)
     else:
-        if random.random() > 0.0625:
+        if random.random() <= 0.25:
             # Random 1 in 16 chance to thank someone who didn't soak us
             # They deserve gratitude as well.
             # But we don't want to be annoying and thank *everyone* who didn't soak us.
