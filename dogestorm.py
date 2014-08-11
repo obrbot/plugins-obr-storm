@@ -132,7 +132,7 @@ def add_doge(event, amount_added):
         event.message(".soak {}".format(int(balance / active)))
 
         soaked_future = event.conn.wait_for(
-            "{} is soaking [0-9]* shibes with ([0-9\.]*) Doge each. Total: [0-9\.]*"
+            "{} is soaking [0-9]* shibes with [0-9\.]* Doge each. Total: ([0-9\.]*)"
             .format(event.conn.bot_nick), nick=doge_nick)
 
         failed_future = event.conn.wait_for("Not enough doge.", nick=doge_nick, chan=doge_nick)
