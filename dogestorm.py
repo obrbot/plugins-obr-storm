@@ -117,7 +117,7 @@ def add_doge(event, amount_added):
     balance = yield from raw_add_balance(event, amount_added)
     # We don't want to count reserves for our smaller soaks
     reserves = yield from raw_add_reserves(event, amount_added * reserve_percentage / 100)
-    balance -= yield from raw_add_reserves(event, amount_added * reserve_percentage / 100)
+    balance -= reserves
     if balance > doge_required_soak:
         active = yield from get_active(event)
         if active < 3:
