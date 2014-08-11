@@ -125,7 +125,7 @@ def add_doge(event, amount_added):
 
         balance = yield from update_balance(event)
 
-        event.message(".soak {}".format(balance / active))
+        event.message(".soak {}".format(int(balance / active)))
         yield from update_balance(event)
 
 
