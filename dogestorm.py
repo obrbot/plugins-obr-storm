@@ -206,7 +206,7 @@ def soaked_regex(match, event):
         # If the user gave us more than 5 or more doge, thank them half of the time.
         if doge_amount_given >= 3 and random.random() < 0.6:
             if not (yield from already_thanked(event, giving_nick)):
-                yield from asyncio.sleep(0.5 + random.random(), loop=event.loop)
+                yield from asyncio.sleep(5 + random.random() * 10, loop=event.loop)
                 event.message("ty")
         # We were soaked
         asyncio.async(add_doge(event, doge_amount_given), loop=event.loop)
@@ -216,7 +216,7 @@ def soaked_regex(match, event):
             # They deserve gratitude as well.
             # But we don't want to be annoying and thank *everyone* who didn't soak us.
             if not (yield from already_thanked(event, giving_nick)):
-                yield from asyncio.sleep(0.5 + random.random(), loop=event.loop)
+                yield from asyncio.sleep(5 + random.random() * 10, loop=event.loop)
                 event.message("ty")
         return  # This checks if we were being soaked.
 
