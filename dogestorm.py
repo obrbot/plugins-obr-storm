@@ -144,7 +144,7 @@ def add_doge(event, amount_added):
 
         if soaked_future in done:
             match = yield from soaked_future
-            yield from raw_add_balance(event, -match.group(1))
+            yield from raw_add_balance(event, -float(match.group(1)))
         for future in pending:
             future.cancel()  # we don't care anymore
 
