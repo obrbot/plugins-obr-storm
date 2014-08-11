@@ -5,15 +5,37 @@ import random
 from obrbot import hook
 
 doge_nick = 'DogeWallet'
-doge_required = 1000
+doge_required_soak = 1000
+
+# This percentage of all donated DogeCoin will be 'reserved' and not used in 1000-coin soaks.
+# This is saving up for future DogeCoin 'soak storms' which aren't currently implemented.
+reserve_percentage = 10
 
 # Don't thank the same person more than every this number of seconds
-thank_every_seconds = 20
+thank_every_seconds = 30
 
 logger = logging.getLogger('obrbot')
 
 balance_key = 'obrbot:plugins:doge-storm:balance'
+reserves_key = 'obrbot:plugins:doge-storm:reserved'
 thanked_timer_key = 'obrbot:plugins:doge-storm:thanked:{}'
+
+
+@asyncio.coroutine
+def raw_get_reserves(event):
+    """
+    :type event: obrbot.event.Event
+    """
+    result = yield from event.async(event.db.get, reserves_key)
+    if result is None:
+        return 0
+    else:
+        return float(result)
+
+
+def raw_add_reserves(event, balance):
+    raw_result = yield from event.async(event.db.incrbyfloat, reserves_key, balance)
+    return float(raw_result)
 
 
 @asyncio.coroutine
@@ -90,10 +112,16 @@ def add_doge(event, amount_added):
     :type event: obrbot.event.Event
     """
     balance = yield from raw_add_balance(event, amount_added)
-    if balance > doge_required:
+    # We don't want to count reserves for our smaller soaks
+    balance -= yield from raw_add_reserves(event, amount_added * reserve_percentage / 100)
+    if balance > doge_required_soak:
         active = yield from get_active(event)
-        if active < 1:
+        if active < 3:
+            event.message("Would have soaked {}, but there are less than 3 active users.")
+            event.message("When more users are active, tip 1 doge and the soak will be re-initiated")
             return
+
+        event.message("Soaking {}!".format(balance))
 
         balance = yield from update_balance(event)
 
@@ -144,12 +172,13 @@ def tipped(match, event):
         return  # if we weren't tipped
     amount = float(match.group(3))
     current = yield from raw_get_balance(event)
-    current += amount
-    if current > doge_required:
+    current -= yield from raw_get_reserves(event)
+    current += amount * (100 - reserve_percentage) / 100  # don't count new reserves
+    if current > doge_required_soak:
         event.message("Thank you {}, you've tipped the balance! {} will be soaked after communications with DogeWallet."
-                      .format(sender, doge_required))
+                      .format(sender, current))
     else:
-        event.message("Thanks for the tip, {}! {} more doge to go!".format(sender, doge_required - current))
+        event.message("Thanks for the tip, {}! {} more doge to go!".format(sender, doge_required_soak - current))
     yield from add_doge(event, amount)
 
 
@@ -161,3 +190,13 @@ def doge_balance(event):
     """
     balance = yield from raw_get_balance(event)
     return "Balance: {}".format(balance)
+
+
+@asyncio.coroutine
+@hook.command("reserves", autohelp=False, permissions=["bot.manage"])
+def doge_reserves(event):
+    """
+    :type event: obrbot.event.Event
+    """
+    balance = yield from raw_get_reserves(event)
+    return "Reserves: {}".format(balance)
