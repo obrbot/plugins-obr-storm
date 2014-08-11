@@ -35,6 +35,12 @@ def raw_add_balance(event, balance):
 
 
 @asyncio.coroutine
+def raw_set_balance(event, balance):
+    raw_result = yield from event.async(event.db.set, balance_key, balance)
+    return float(raw_result)
+
+
+@asyncio.coroutine
 def already_thanked(event, nick):
     """
     :type event: obrbot.event.Event
@@ -42,8 +48,9 @@ def already_thanked(event, nick):
     key = thanked_timer_key.format(nick.lower())
     result = yield from event.async(event.db.get, key)
     if result is not None:
+        logger.warning("Already thanked {}, not thanking again".format(nick))
         return True
-    yield from event.async(event.db.set(key, '', ex=thank_every_seconds))
+    yield from event.async(event.db.setex, key, thank_every_seconds, '')
     return False
 
 
@@ -52,9 +59,8 @@ def get_active(event):
     """
     :type event: obrbot.event.Event
     """
-    event.message("active", target="DogeWallet")
-    active = (yield from event.wait_for_message("Active Shibes: ([0-9]*)", nick="DogeWallet",
-                                                chan="DogeWallet")).group(1)
+    event.message("active", target=doge_nick)
+    active = (yield from event.wait_for_message("^Active Shibes: ([0-9]*)$", nick=doge_nick, chan=doge_nick)).group(1)
 
     print("Active: " + active)
     return int(active)
@@ -69,12 +75,11 @@ def update_balance(event):
     """
     stored_balance = yield from raw_get_balance(event)
 
-    event.message("balance", target="DogeWallet")
-    balance = float((yield from event.wait_for_message("([0-9]*\.?[0-9]*)", nick="DogeWallet",
-                                                       chan="DogeWallet")).group(1))
+    event.message("balance", target=doge_nick)
+    balance = float((yield from event.wait_for_message("^([0-9]*\.?[0-9]*)$", nick=doge_nick, chan=doge_nick)).group(1))
 
     if stored_balance != balance:
-        yield from event.async(event.db.set, 'plugins:doge-wallet:balance', balance)
+        yield from raw_set_balance(event, balance)
 
     return balance
 
@@ -103,6 +108,8 @@ def soaked_regex(match, event):
     :type match: re.__Match[str]
     :type event: obrbot.event.Event
     """
+    giving_nick = match.group(1)
+
     if event.nick != doge_nick:
         return
 
@@ -110,19 +117,19 @@ def soaked_regex(match, event):
 
     doge_amount_given = int(match.group(2))
 
-    if event.conn.bot_nick in second.group(1).lower().split():
+    if event.conn.bot_nick.lower() in second.group(1).lower().split():
         # We were soaked
         asyncio.async(add_doge(event, doge_amount_given), loop=event.loop)
         # If the user gave us more than 5 or more doge, thank them half of the time.
         if doge_amount_given >= 5 and random.random() > 0.5:
-            if not already_thanked(event, event.nick):
+            if not (yield from already_thanked(event, giving_nick)):
                 event.message("ty")
     else:
-        if random.random() > 0.0625:
-            # Random 1 in 16 chance to thank someone who didn't soak us
+        if random.random() > 0.125:
+            # Random 1 in 8 chance to thank someone who didn't soak us
             # They deserve gratitude as well.
             # But we don't want to be annoying and thank *everyone* who didn't soak us.
-            if not already_thanked(event, event.nick):
+            if not (yield from already_thanked(event, giving_nick)):
                 event.message("ty")
         return  # This checks if we were being soaked.
 
