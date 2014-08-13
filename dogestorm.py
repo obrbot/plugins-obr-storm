@@ -6,6 +6,11 @@ import math
 
 from obrbot import hook
 
+plugin_info = {
+    "plugin_category": "channel-specific",
+    "command_category_name": "DogeStorm"
+}
+
 doge_nick = 'DogeWallet'
 doge_channel = '#doge-coin'
 doge_required_soak = 300
