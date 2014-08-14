@@ -75,6 +75,7 @@ def convert_command(event):
 
     result = amount * currency_rates[from_currency] / currency_rates[to_currency]
     if currency_units[to_currency] != 1:
-        result -= result % currency_units[to_currency]  # better way to do this than subtracting modulo?
+        if result - result % currency_units[to_currency] != 0:
+            result -= result % currency_units[to_currency]  # better way to do this than subtracting modulo?
     result = result.normalize()
     event.message("{} {} to {} = {}".format(str(amount), from_currency.lower(), to_currency.lower(), result))
