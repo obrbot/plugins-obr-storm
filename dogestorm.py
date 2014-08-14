@@ -84,7 +84,7 @@ def raw_set_balance(event, balance):
     :type event: obrbot.event.Event
     """
     raw_result = yield from event.async(event.db.set, balance_key, balance)
-    return Decimal(raw_result.decode())
+    return raw_result
 
 
 @asyncio.coroutine
