@@ -44,18 +44,11 @@ def load_rates():
         currency_units[symbol] = unit
 
 
-@hook.regex(r"^\.convert ?(.*)$")  # Until I add support for per-plugin prefixes
 @hook.command('convert')
 def convert_command(event):
-    if hasattr(event, "match"):
-        prefix = '.'
-        text = event.match.group(1)
-    else:
-        prefix = event.conn.config.get('prefix')
-        text = event.text
-    split = text.split()
+    split = event.text.split()
     if len(split) != 3:
-        event.message("Usage: {}convert <FROM> <TO> <AMOUNT>".format(prefix))
+        event.notice_doc()
         return
 
     from_currency = split[0]
@@ -63,14 +56,14 @@ def convert_command(event):
     try:
         amount = Decimal(split[2])
     except InvalidOperation:
-        event.message("Invalid amount '{}'".format(split[2]))
+        event.notice("Invalid amount '{}'".format(split[2]))
         return
 
     if from_currency not in currency_rates:
-        event.message("Unknown currency '{}'".format(from_currency))
+        event.notice("Unknown currency '{}'".format(from_currency))
         return
     if to_currency not in currency_rates:
-        event.message("Unknown currency '{}'".format(to_currency))
+        event.notice("Unknown currency '{}'".format(to_currency))
         return
 
     result = amount * currency_rates[from_currency] / currency_rates[to_currency]
