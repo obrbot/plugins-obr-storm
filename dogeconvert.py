@@ -44,7 +44,7 @@ def load_rates():
         currency_units[symbol] = unit
 
 
-@hook.regex("^.convert ?(.*)$")  # Until I add support for per-plugin prefixes
+@hook.regex(r"^\.convert ?(.*)$")  # Until I add support for per-plugin prefixes
 @hook.command('convert')
 def convert_command(event):
     if hasattr(event, "match"):
