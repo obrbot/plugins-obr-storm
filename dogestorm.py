@@ -167,7 +167,7 @@ def add_doge(event, amount_added):
     if balance > doge_required_soak:
         active = yield from get_active(event)
         if active < 3:
-            event.message("Would have soaked {}, but there are less than 3 active users.")
+            event.message("Would have soaked {}, but there are less than 3 active users.".format(balance))
             event.message("When more users are active, tip 1 doge and the soak will be re-initiated")
             return
         event.message("[Soak] Soaking {}!".format(balance))
