@@ -1,8 +1,8 @@
 import asyncio
+import datetime
 from decimal import Decimal
 import logging
 import random
-import math
 
 from obrbot import hook
 
@@ -13,47 +13,22 @@ plugin_info = {
 
 doge_nick = 'DogeWallet'
 doge_channel = '#doge-coin'
-doge_required_soak = 300
-
-# This percentage of all donated DogeCoin will be 'reserved' and not used in 1000-coin soaks.
-# This is saving up for future DogeCoin 'soak storms' which aren't currently implemented.
-reserve_percentage = Decimal(10)
+doge_required_for_storm = 400
 
 # Don't thank the same person more than every this number of seconds
 thank_every_seconds = 30
 
+# Time between storms
+time_between_storms = datetime.timedelta(hours=38)
+storm_length = datetime.timedelta(minutes=10)
+
 logger = logging.getLogger('obrbot')
 
 balance_key = 'obrbot:plugins:doge-storm:balance'
-reserves_key = 'obrbot:plugins:doge-storm:reserved'
 soaked_key = 'obrbot:plugins:doge-storm:soaked'
+next_storm_key = 'obrbot:plugins:doge-storm:next-storm-time'
+storm_running_key = 'obrbot:plugins:doge-storm:is-storm-running'
 thanked_timer_key = 'obrbot:plugins:doge-storm:thanked:{}'
-
-
-@asyncio.coroutine
-def raw_get_reserves(event):
-    """
-    :type event: obrbot.event.Event
-    """
-    raw_result = yield from event.async(event.db.get, reserves_key)
-    if raw_result is None:
-        return 0
-    else:
-        # See below, in raw_add_reserves
-        return Decimal(raw_result.decode()) / 1000
-
-
-@asyncio.coroutine
-def raw_add_reserves(event, balance):
-    """
-    :type event: obrbot.event.Event
-    """
-    logger.info("Adding {} to reserves".format(balance))
-    # We're multiplying by 1000 and dividing by 1000 in order to store the reserves in Redis as an integer, but with
-    # some decimal accuracy. Since we can't use the 'Decimal' class in Redis, we're just storing it as 1000* it's actual
-    # value, so that some decimal places are preserved.
-    raw_result = yield from event.async(event.db.incrby, reserves_key, int(balance * 1000))
-    return Decimal(raw_result) / 1000
 
 
 @asyncio.coroutine
@@ -88,6 +63,31 @@ def raw_set_balance(event, balance):
 
 
 @asyncio.coroutine
+def raw_next_storm(event):
+    """
+    :type event: obrbot.event.Event
+    """
+    raw_result = yield from event.async(event.db.get, next_storm_key)
+    if raw_result is None:
+        return None
+    else:
+        return datetime.datetime.utcfromtimestamp(int(raw_result))
+
+
+@asyncio.coroutine
+def set_next_storm(event, time):
+    """
+    :type event: obrbot.event.Event
+    :type time: datetime.datetime
+    """
+    epoch = datetime.datetime.utcfromtimestamp(0)
+    delta = time - epoch
+    timestamp = delta.total_seconds() * 1000
+    raw_result = yield from event.async(event.db.set, next_storm_key, timestamp)
+    return raw_result
+
+
+@asyncio.coroutine
 def raw_get_soaked(event):
     """
     :type event: obrbot.event.Event
@@ -113,17 +113,10 @@ def already_thanked(event, nick):
     key = thanked_timer_key.format(nick.lower())
     result = yield from event.async(event.db.get, key)
     if result is not None:
-        logger.warning("Already thanked {}, not thanking again".format(nick))
+        logger.info("Already thanked {}, not thanking again".format(nick))
         return True
     yield from event.async(event.db.setex, key, thank_every_seconds, '')
     return False
-
-
-def get_amount_till_next_soak(balance):
-    # Slightly-accurate of amount needing to be gathered, taking into account reserved amount
-    # 0.0111111etc works because reserve_percentage is a percentage of doge donated which *won't* be used.
-    reserved_multiplier = 1 + reserve_percentage * Decimal("0.01111111")
-    return math.ceil((doge_required_soak - balance) * reserved_multiplier)
 
 
 @asyncio.coroutine
@@ -161,9 +154,6 @@ def add_doge(event, amount_added):
     :type event: obrbot.event.Event
     """
     balance = yield from raw_add_balance(event, amount_added)
-    # We don't want to count reserves for our smaller soaks
-    reserves = yield from raw_add_reserves(event, amount_added * reserve_percentage / 100)
-    balance -= reserves
     if balance > doge_required_soak:
         active = yield from get_active(event)
         if active < 3:
@@ -250,7 +240,7 @@ def tipped(match, event):
     amount = Decimal(match.group(3))
     current = yield from raw_get_balance(event)
     current -= yield from raw_get_reserves(event)
-    current += amount * (100 - reserve_percentage) / 100  # don't count new reserves
+    current += amount * (100 - reserver_each_storm) / 100  # don't count new reserves
     if current > doge_required_soak:
         event.message("[Soak] Thank you {}, you've tipped the balance! Soak incoming!"
                       .format(sender, current))
